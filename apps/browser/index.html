@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="app-name" content="Browser">
+  <meta name="app-version" content="1.0">
+  <meta name="app-icon" content="🌐">
+  <meta name="description" content="A tabbed browser with DuckDuckGo search, history, and incognito mode">
+  <style>
+    body {
+      background: #161628;
+      color: #f0f0f8;
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .browser-toolbar {
+      background: #1e1e30;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .browser-nav-btn {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: #f0f0f8;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .browser-nav-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .browser-url-bar {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: #f0f0f8;
+      font-size: 13px;
+      outline: none;
+    }
+    .browser-url-bar:focus {
+      border-color: #e94560;
+    }
+    .browser-tabs {
+      background: #1e1e30;
+      padding: 4px 12px;
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      overflow-x: auto;
+    }
+    .browser-tabs::-webkit-scrollbar {
+      height: 4px;
+    }
+    .browser-tabs::-webkit-scrollbar-thumb {
+      background: #e94560;
+      border-radius: 2px;
+    }
+    .browser-tab {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px 8px 0 0;
+      padding: 6px 12px 8px;
+      color: #f0f0f8;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .browser-tab.active {
+      background: #161628;
+      border-bottom-color: #161628;
+    }
+    .browser-tab:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .browser-tab-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .browser-tab-close:hover {
+      color: #f0f0f8;
+    }
+    .browser-tab-favicon {
+      font-size: 12px;
+    }
+    .browser-tab-title {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .browser-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .browser-view {
+      flex: 1;
+      min-height: 0;
+      background: #fff;
+      color: #000;
+    }
+    .browser-view iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .browser-incognito {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #333;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .browser-history {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform 0.2s;
+    }
+    .browser-history.show {
+      transform: translateY(0);
+    }
+    .browser-history-item {
+      color: #f0f0f8;
+      padding: 4px 8px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .browser-history-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .browser-incognito-mode {
+      filter: invert(0.8) hue-rotate(180deg);
+    }
+  </style>
+</head>
+<body>
+  <div class="browser-incognito" id="incognito-badge" style="display: none;">🕵️ Incognito</div>
+  <div class="browser-toolbar">
+    <button class="browser-nav-btn" onclick="navigateBack()">←</button>
+    <button class="browser-nav-btn" onclick="navigateForward()">→</button>
+    <button class="browser-nav-btn" onclick="refreshTab()">🔄</button>
+    <input type="text" class="browser-url-bar" id="url-bar" placeholder="Search or enter URL"
+           onkeydown="if(event.key==='Enter')loadUrl()">
+    <button class="browser-nav-btn" onclick="toggleHistory()">🕒</button>
+    <button class="browser-nav-btn" onclick="toggleIncognito()">🕵️</button>
+    <button class="browser-nav-btn" onclick="newTab()">➕</button>
+  </div>
+  <div class="browser-tabs" id="tabs-container">
+    <div class="browser-tab active" data-url="https://duckduckgo.com" onclick="switchTab(0)">
+      <span class="browser-tab-favicon">🦆</span>
+      <span class="browser-tab-title">DuckDuckGo</span>
+      <button class="browser-tab-close" onclick="closeTab(0, event)">✕</button>
+    </div>
+  </div>
+  <div class="browser-content">
+    <div class="browser-view" id="browser-view-0">
+      <iframe src="https://duckduckgo.com" id="iframe-0"></iframe>
+    </div>
+  </div>
+  <div class="browser-history" id="history-panel">
+    <div class="browser-history-item" onclick="loadUrl('https://duckduckgo.com')">🦆 DuckDuckGo</div>
+  </div>
+  <script>
+    let tabs = [
+      { id: 0, url: 'https://duckduckgo.com', title: 'DuckDuckGo', incognito: false }
+    ];
+    let currentTab = 0;
+    let incognitoMode = false;
+    let history = JSON.parse(localStorage.getItem('browserHistory')) || [];
+
+    // Initialize the browser.
+    function initBrowser() {
+      document.getElementById('url-bar').value = tabs[currentTab].url;
+      updateHistory();
+    }
+
+    // Load a URL in the current tab.
+    function loadUrl() {
+      const url = document.getElementById('url-bar').value;
+      if (!url.startsWith('http')) {
+        // Default to DuckDuckGo search.
+        const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(url)}`;
+        document.getElementById('url-bar').value = searchUrl;
+        updateTab(currentTab, searchUrl);
+      } else {
+        updateTab(currentTab, url);
+      }
+      addToHistory(url);
+    }
+
+    // Update a tab's URL and iframe.
+    function updateTab(tabId, url) {
+      const tab = tabs[tabId];
+      tab.url = url;
+      const iframe = document.getElementById(`iframe-${tabId}`);
+      iframe.src = url;
+      document.querySelector(`.browser-tab[data-url="${tab.url}"] .browser-tab-title`).textContent =
+        new URL(url).hostname || 'New Tab';
+      if (tabId === currentTab) {
+        document.getElementById('url-bar').value = url;
+      }
+    }
+
+    // Add a URL to history.
+    function addToHistory(url) {
+      if (!incognitoMode) {
+        history.unshift({
+          url: url,
+          title: new URL(url).hostname || 'Untitled',
+          timestamp: Date.now()
+        });
+        localStorage.setItem('browserHistory', JSON.stringify(history));
+        updateHistory();
+      }
+    }
+
+    // Update the history panel.
+    function updateHistory() {
+      const historyPanel = document.getElementById('history-panel');
+      historyPanel.innerHTML = history.slice(0, 20).map(item => `
+        <div class="browser-history-item" onclick="loadUrl('${item.url}')">
+          ${item.title}
+        </div>
+      `).join('');
+    }
+
+    // Toggle history panel.
+    function toggleHistory() {
+      document.getElementById('history-panel').classList.toggle('show');
+    }
+
+    // Toggle incognito mode.
+    function toggleIncognito() {
+      incognitoMode = !incognitoMode;
+      document.getElementById('incognito-badge').style.display =
+        incognitoMode ? 'block' : 'none';
+      document.body.classList.toggle('browser-incognito-mode', incognitoMode);
+      if (incognitoMode) {
+        log('Incognito mode enabled. History will not be saved.', '#f90');
+      } else {
+        log('Incognito mode disabled.', '#0f0');
+      }
+    }
+
+    // Create a new tab.
+    function newTab(url = 'https://duckduckgo.com') {
+      const tabId = tabs.length;
+      const newTab = {
+        id: tabId,
+        url: url,
+        title: new URL(url).hostname || 'New Tab',
+        incognito: incognitoMode
+      };
+      tabs.push(newTab);
+      currentTab = tabId;
+      renderTabs();
+      updateTab(tabId, url);
+      document.getElementById('url-bar').value = url;
+    }
+
+    // Render the tabs bar.
+    function renderTabs() {
+      const tabsContainer = document.getElementById('tabs-container');
+      tabsContainer.innerHTML = tabs.map((tab, index) => `
+        <div class="browser-tab ${index === currentTab ? 'active' : ''}"
+             data-url="${tab.url}" onclick="switchTab(${index})">
+          <span class="browser-tab-favicon">🌐</span>
+          <span class="browser-tab-title">${tab.title}</span>
+          <button class="browser-tab-close" onclick="closeTab(${index}, event)">✕</button>
+        </div>
+      `).join('');
+      // Update the active view.
+      document.querySelectorAll('.browser-view').forEach(view => {
+        view.style.display = 'none';
+      });
+      const activeView = document.getElementById(`browser-view-${currentTab}`);
+      if (!activeView) {
+        const newView = document.createElement('div');
+        newView.id = `browser-view-${currentTab}`;
+        newView.className = 'browser-view';
+        newView.innerHTML = `<iframe src="${tabs[currentTab].url}" id="iframe-${currentTab}"></iframe>`;
+        document.querySelector('.browser-content').appendChild(newView);
+      } else {
+        activeView.style.display = 'block';
+      }
+    }
+
+    // Switch to a tab.
+    function switchTab(tabId) {
+      currentTab = tabId;
+      renderTabs();
+      document.getElementById('url-bar').value = tabs[tabId].url;
+    }
+
+    // Close a tab.
+    function closeTab(tabId, event) {
+      event.stopPropagation();
+      if (tabs.length <= 1) {
+        log('Cannot close the last tab.', '#f90');
+        return;
+      }
+      // Remove the tab.
+      tabs.splice(tabId, 1);
+      // Update currentTab if needed.
+      if (currentTab >= tabId) currentTab = Math.max(0, currentTab - 1);
+      renderTabs();
+    }
+
+    // Navigate back/forward.
+    function navigateBack() {
+      const iframe = document.getElementById(`iframe-${currentTab}`);
+      if (iframe.contentWindow) {
+        iframe.contentWindow.history.back();
+      }
+    }
+
+    function navigateForward() {
+      const iframe = document.getElementById(`iframe-${currentTab}`);
+      if (iframe.contentWindow) {
+        iframe.contentWindow.history.forward();
+      }
+    }
+
+    function refreshTab() {
+      const iframe = document.getElementById(`iframe-${currentTab}`);
+      iframe.src = iframe.src;
+    }
+
+    // Initialize the browser.
+    initBrowser();
+  </script>
+</body>
+</html>
