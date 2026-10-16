@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="app-name" content="My App">
+<meta name="app-version" content="1.0">
+<meta name="app-icon" content="📦">
+<meta name="description" content="A sample OpenWebOS app">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Iframe Browser</title>
+<style>
+  :root{ --bg:#0f1724; --panel:#0b1220; --fg:#e6eef8; --muted:#9aa0b4; --accent:#4fb0ff; --glass: rgba(255,255,255,0.03) }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Inter, Roboto, sans-serif}
+  .app{display:flex;flex-direction:column;height:100%}
+  header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
+  .brand{display:flex;align-items:center;gap:8px}
+  .brand .icon{font-size:20px}
+  .toolbar{display:flex;align-items:center;gap:8px;flex:1}
+  .controls{display:flex;gap:6px}
+  button{background:var(--glass);border:1px solid rgba(255,255,255,0.03);color:var(--fg);padding:8px;border-radius:8px;cursor:pointer}
+  button.primary{background:var(--accent);color:#052034}
+  button:disabled{opacity:0.45;cursor:not-allowed}
+  input[type="text"]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:var(--fg)}
+  main{display:flex;flex:1;gap:12px;padding:12px}
+  .sidebar{width:280px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);border-radius:10px;padding:12px;display:flex;flex-direction:column}
+  .viewer{flex:1;display:flex;flex-direction:column}
+  iframe{flex:1;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:#fff}
+  .panel-title{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .list{overflow:auto;flex:1}
+  .list .item{padding:8px;border-radius:6px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .list .item a{color:var(--fg);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+  .small{font-size:12px;color:var(--muted)}
+  footer{padding:8px 12px;color:var(--muted);font-size:12px}
+  .cookie-box, .storage-box{margin-top:8px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;font-size:13px}
+  .row{display:flex;gap:8px;align-items:center}
+  .sep{height:10px}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand"><div class="icon">📦</div><div><strong>Iframe Browser</strong><div class="small">My App — browser mode</div></div></div>
+      <div class="toolbar">
+        <div class="controls">
+          <button id="back" title="Back">◀</button>
+          <button id="forward" title="Forward">▶</button>
+          <button id="home" title="Home">🏠</button>
+          <button id="bookmark" title="Bookmark">★</button>
+        </div>
+        <input id="url" type="text" placeholder="https://example.com">
+        <button id="go" class="primary">Go</button>
+        <button id="reload">⟳</button>
+        <button id="popup">↗</button>
+      </div>
+    </header>
+
+    <main>
+      <aside class="sidebar">
+        <div>
+          <div class="panel-title">Bookmarks</div>
+          <div class="list" id="bookmarks"></div>
+          <div class="sep"></div>
+          <div class="panel-title">History</div>
+          <div class="list" id="history"></div>
+        </div>
+        <div class="sep"></div>
+        <div class="panel-title">Storage & Cookies</div>
+        <div class="cookie-box">
+          <div class="small">Cookies (same-origin pages only)</div>
+          <div id="cookieValue" class="small">—</div>
+          <div class="row" style="margin-top:8px">
+            <input id="cookieName" placeholder="name" style="flex:1;padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.03)">
+            <input id="cookieVal" placeholder="value" style="flex:1;padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.03)">
+            <button id="setCookie">Set</button>
+          </div>
+        </div>
+        <div class="storage-box">
+          <div class="small">localStorage (same-origin only)</div>
+          <div style="margin-top:6px" class="row">
+            <input id="lsKey" placeholder="key" style="flex:1;padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.03)">
+            <input id="lsVal" placeholder="value" style="flex:1;padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.03)">
+            <button id="setLS">Set</button>
+          </div>
+          <div id="lsContents" class="small" style="margin-top:8px">—</div>
+        </div>
+      </aside>
+
+      <section class="viewer">
+        <iframe id="browser" src="about:blank" frameborder="0" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts" ></iframe>
+        <footer>
+          <span id="status">Ready</span>
+        </footer>
+      </section>
+    </main>
+  </div>
+
+<script>
+// A richer iframe "browser" that supports bookmarks, history (persisted to IndexedDB), localStorage/cookie helpers (same-origin only), and back/forward navigation.
+// Note: Full browser features (e.g., cross-origin cookie access, IndexedDB inside framed origins, WebRTC) are limited by the host browser's security model. This app provides an interface to interact with same-origin framed pages and stores metadata locally.
+
+// ---- Utilities: IndexedDB wrapper ----
+function openDB(name, version=1){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(name, version);
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('history')) db.createObjectStore('history', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function addHistoryEntry(db, entry){
+  return new Promise((res, rej)=>{
+    const tx = db.transaction('history', 'readwrite');
+    const store = tx.objectStore('history');
+    const r = store.add(entry);
+    r.onsuccess = ()=> res(r.result);
+    r.onerror = ()=> rej(r.error);
+  });
+}
+
+async function getHistory(db, limit=200){
+  return new Promise((res, rej)=>{
+    const tx = db.transaction('history', 'readonly');
+    const store = tx.objectStore('history');
+    const items = [];
+    const cursorReq = store.openCursor(null, 'previous');
+    cursorReq.onsuccess = (e)=>{
+      const cur = e.target.result;
+      if(cur && items.length < limit){ items.push(cur.value); cur.continue(); }
+      else res(items);
+    };
+    cursorReq.onerror = ()=> rej(cursorReq.error);
+  });
+}
+
+async function clearHistory(db){
+  return new Promise((res, rej)=>{
+    const tx = db.transaction('history', 'readwrite');
+    const store = tx.objectStore('history');
+    const r = store.clear();
+    r.onsuccess = ()=> res(); r.onerror = ()=> rej(r.error);
+  });
+}
+
+// ---- State ----
+const iframe = document.getElementById('browser');
+const input = document.getElementById('url');
+const goBtn = document.getElementById('go');
+const backBtn = document.getElementById('back');
+const forwardBtn = document.getElementById('forward');
+const reloadBtn = document.getElementById('reload');
+const homeBtn = document.getElementById('home');
+const bookmarkBtn = document.getElementById('bookmark');
+const popupBtn = document.getElementById('popup');
+const status = document.getElementById('status');
+
+const bookmarksEl = document.getElementById('bookmarks');
+const historyEl = document.getElementById('history');
+const cookieValue = document.getElementById('cookieValue');
+const setCookieBtn = document.getElementById('setCookie');
+const cookieName = document.getElementById('cookieName');
+const cookieVal = document.getElementById('cookieVal');
+const lsKey = document.getElementById('lsKey');
+const lsVal = document.getElementById('lsVal');
+const setLSBtn = document.getElementById('setLS');
+const lsContents = document.getElementById('lsContents');
+
+let dbPromise;
+let historyStack = [];
+let historyIndex = -1;
+let HOME = localStorage.getItem('iframe_home') || 'https://example.com';
+
+// Bookmarks stored in localStorage for simplicity
+function loadBookmarks(){
+  try{
+    return JSON.parse(localStorage.getItem('iframe_bookmarks')||'[]');
+  }catch(e){ return []; }
+}
+function saveBookmarks(b){ localStorage.setItem('iframe_bookmarks', JSON.stringify(b)); }
+
+function renderBookmarks(){
+  const list = loadBookmarks();
+  bookmarksEl.innerHTML = '';
+  if(list.length===0){ bookmarksEl.innerHTML = '<div class="small">No bookmarks yet</div>'; return; }
+  list.forEach((b, i)=>{
+    const div = document.createElement('div'); div.className='item';
+    const a = document.createElement('a'); a.href='#'; a.textContent = b.title || b.url; a.onclick = (e)=>{ e.preventDefault(); navigate(b.url); };
+    const del = document.createElement('button'); del.textContent='✖'; del.title='Remove'; del.onclick = ()=>{ list.splice(i,1); saveBookmarks(list); renderBookmarks(); };
+    div.appendChild(a); div.appendChild(del); bookmarksEl.appendChild(div);
+  });
+}
+
+function renderHistory(items){
+  historyEl.innerHTML = '';
+  if(!items || items.length===0){ historyEl.innerHTML = '<div class="small">History is empty</div>'; return; }
+  items.slice(0,100).forEach(h=>{
+    const div = document.createElement('div'); div.className='item';
+    const a = document.createElement('a'); a.href='#'; a.textContent = (h.title||h.url); a.onclick = (e)=>{ e.preventDefault(); navigate(h.url); };
+    const time = document.createElement('div'); time.className='small'; time.textContent = new Date(h.timestamp).toLocaleString();
+    div.appendChild(a); div.appendChild(time); historyEl.appendChild(div);
+  });
+}
+
+// ---- Navigation & history stack ----
+function ensureUrl(u){ if(!u) return 'about:blank'; u=u.trim(); if(!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) u='https://'+u; return u; }
+
+function updateButtons(){
+  backBtn.disabled = historyIndex <= 0;
+  forwardBtn.disabled = historyIndex + 1 >= historyStack.length;
+}
+
+async function navigate(url, push=true){
+  url = ensureUrl(url);
+  try{ iframe.src = url; }catch(e){ iframe.setAttribute('src', url); }
+  input.value = url;
+  status.textContent = 'Loading...';
+  if(push){
+    historyStack = historyStack.slice(0, historyIndex+1);
+    historyStack.push(url);
+    historyIndex = historyStack.length - 1;
+    updateButtons();
+  }
+}
+
+goBtn.addEventListener('click', ()=> navigate(input.value));
+input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') navigate(input.value); });
+backBtn.addEventListener('click', ()=>{
+  if(historyIndex>0){ historyIndex--; const u=historyStack[historyIndex]; iframe.src = u; input.value = u; updateButtons(); }
+});
+forwardBtn.addEventListener('click', ()=>{
+  if(historyIndex+1 < historyStack.length){ historyIndex++; const u=historyStack[historyIndex]; iframe.src = u; input.value = u; updateButtons(); }
+});
+reloadBtn.addEventListener('click', ()=>{ try{ iframe.contentWindow.location.reload(); }catch(e){ iframe.src = iframe.src || input.value || 'about:blank'; } });
+homeBtn.addEventListener('click', ()=> navigate(HOME));
+bookmarkBtn.addEventListener('click', async ()=>{
+  const url = iframe.src || input.value;
+  let title = url;
+  try{ title = iframe.contentDocument && iframe.contentDocument.title || url; }catch(e){}
+  const list = loadBookmarks(); list.unshift({title, url}); saveBookmarks(list); renderBookmarks();
+});
+popupBtn.addEventListener('click', ()=> window.open(iframe.src || input.value || 'about:blank', '_blank'));
+
+// ---- Cookie & localStorage helpers (same-origin only) ----
+async function refreshStorageViews(){
+  // Cookies
+  try{
+    const cookies = iframe.contentWindow.document.cookie;
+    cookieValue.textContent = cookies || '—';
+  }catch(e){ cookieValue.textContent = 'Unavailable (cross-origin)'; }
+  // localStorage
+  try{
+    const items = []; for(let i=0;i<iframe.contentWindow.localStorage.length;i++){ const k = iframe.contentWindow.localStorage.key(i); items.push(k+': '+iframe.contentWindow.localStorage.getItem(k)); }
+    lsContents.textContent = items.length? items.join('\n') : '—';
+  }catch(e){ lsContents.textContent = 'Unavailable (cross-origin)'; }
+}
+
+setCookieBtn.addEventListener('click', ()=>{
+  const name = cookieName.value.trim(); const val = cookieVal.value;
+  if(!name){ alert('Provide cookie name'); return; }
+  try{
+    // Set cookie on the framed document (same-origin only)
+    iframe.contentWindow.document.cookie = name + '=' + encodeURIComponent(val) + '; path=/';
+    refreshStorageViews();
+  }catch(e){ alert('Unable to set cookie (cross-origin)'); }
+});
+setLSBtn.addEventListener('click', ()=>{
+  const k = lsKey.value; const v = lsVal.value;
+  if(!k){ alert('Provide key'); return; }
+  try{
+    iframe.contentWindow.localStorage.setItem(k, v);
+    refreshStorageViews();
+  }catch(e){ alert('Unable to access localStorage (cross-origin)'); }
+});
+
+// ---- Iframe load handling ----
+iframe.addEventListener('load', async ()=>{
+  status.textContent = 'Loaded';
+  let currentUrl = iframe.src;
+  // Try to read title if same-origin
+  let title = null;
+  try{
+    title = iframe.contentDocument && iframe.contentDocument.title;
+  }catch(e){ /* cross-origin */ }
+  input.value = currentUrl;
+  // Add to persistent history
+  try{
+    const db = await dbPromise;
+    await addHistoryEntry(db, { url: currentUrl, title: title || currentUrl, timestamp: Date.now() });
+    const items = await getHistory(db, 200);
+    renderHistory(items);
+  }catch(e){ console.warn('history db error', e); }
+  // Update storage/cookie view
+  refreshStorageViews();
+});
+
+// ---- Initialization ----
+(async function init(){
+  dbPromise = await openDB('iframebrowser');
+  renderBookmarks();
+  try{ const items = await getHistory(await dbPromise, 200); renderHistory(items); }catch(e){}
+  // Restore last session
+  const last = localStorage.getItem('iframe_last');
+  if(last){ try{ navigate(JSON.parse(last).url); }catch(e){ /* ignore */ } }
+  updateButtons();
+  // Persist navigation events triggered via our controls
+  window.addEventListener('beforeunload', ()=>{ localStorage.setItem('iframe_last', JSON.stringify({ url: iframe.src })); });
+})();
+
+// Periodically save session state
+setInterval(()=>{ try{ localStorage.setItem('iframe_last', JSON.stringify({ url: iframe.src })); }catch(e){} }, 2000);
+
+</script>
+</body>
+</html>
