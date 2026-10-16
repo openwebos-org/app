@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="app-name" content="My App">
+<meta name="app-version" content="1.0">
+<meta name="app-icon" content="📦">
+<meta name="description" content="A sample OpenWebOS app">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Iframe Browser</title>
+<style>
+  :root{ --bg:#161628; --fg:#f0f0f8; --muted:#9aa0b4; --accent:#7aa2ff; }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Roboto, sans-serif}
+  .container{padding:16px;display:flex;flex-direction:column;height:100%}
+  h2{margin:0 0 12px 0}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .toolbar input[type="text"]{flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:var(--fg)}
+  .toolbar button{padding:8px 12px;border-radius:6px;border:none;background:var(--accent);color:#04203a;cursor:pointer}
+  .toolbar button:disabled{opacity:0.4;cursor:not-allowed}
+  iframe{flex:1;width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#fff}
+  .note{color:var(--muted);font-size:13px;margin-top:8px}
+</style>
+</head>
+<body>
+  <div class="container">
+    <h2>My App — Iframe Browser</h2>
+    <div class="toolbar">
+      <input id="url" type="text" placeholder="https://example.com">
+      <button id="go">Go</button>
+      <button id="back" disabled>Back</button>
+      <button id="forward" disabled>Forward</button>
+      <button id="reload">Reload</button>
+      <button id="popup">Open in new tab</button>
+    </div>
+
+    <iframe id="browser" src="about:blank" frameborder="0" allowfullscreen></iframe>
+
+    <div class="note">Tip: some sites block embedding (X-Frame-Options or CSP). You mentioned you have a CORS extension — that may help for testing.</div>
+  </div>
+
+<script>
+// Simple iframe browser. Keeps the original meta tags from the provided file intact.
+const input = document.getElementById('url');
+const iframe = document.getElementById('browser');
+const goBtn = document.getElementById('go');
+const backBtn = document.getElementById('back');
+const forwardBtn = document.getElementById('forward');
+const reloadBtn = document.getElementById('reload');
+const popupBtn = document.getElementById('popup');
+
+let historyStack = [];
+let historyIndex = -1;
+
+function ensureUrl(u){
+  if(!u) return 'about:blank';
+  u = u.trim();
+  // If user omitted scheme, default to https
+  if(!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) u = 'https://' + u;
+  return u;
+}
+
+function navigate(url, push=true){
+  try{
+    url = ensureUrl(url);
+  }catch(e){ url = 'about:blank'; }
+  iframe.src = url;
+  if(push){
+    // Trim forward history when navigating to a new URL
+    historyStack = historyStack.slice(0, historyIndex+1);
+    historyStack.push(url);
+    historyIndex = historyStack.length - 1;
+  }
+  input.value = url;
+  updateButtons();
+}
+
+function updateButtons(){
+  backBtn.disabled = historyIndex <= 0;
+  forwardBtn.disabled = historyIndex + 1 >= historyStack.length;
+}
+
+// Controls
+goBtn.addEventListener('click', ()=> navigate(input.value));
+input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') navigate(input.value); });
+backBtn.addEventListener('click', ()=>{
+  if(historyIndex > 0){
+    historyIndex--;
+    iframe.src = historyStack[historyIndex];
+    input.value = historyStack[historyIndex];
+    updateButtons();
+  }
+});
+forwardBtn.addEventListener('click', ()=>{
+  if(historyIndex + 1 < historyStack.length){
+    historyIndex++;
+    iframe.src = historyStack[historyIndex];
+    input.value = historyStack[historyIndex];
+    updateButtons();
+  }
+});
+reloadBtn.addEventListener('click', ()=>{
+  // Force reload by resetting src
+  iframe.src = iframe.src || input.value || 'about:blank';
+});
+popupBtn.addEventListener('click', ()=>{
+  const target = iframe.src || input.value || 'about:blank';
+  window.open(target, '_blank');
+});
+
+// Note: due to cross-origin restrictions we cannot inspect iframe internal navigation or title.
+// This browser only tracks navigations done via the address bar and our controls.
+
+// Optional: load a default page for convenience (commented out)
+// navigate('https://example.com');
+
+</script>
+</body>
+</html>
