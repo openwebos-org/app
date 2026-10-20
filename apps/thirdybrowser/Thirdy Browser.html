@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="app-name" content="Thirdy Browser">
+<meta name="app-version" content="1.0.0">
+<meta name="app-icon" content="🌐">
+<meta name="description" content="A lightweight iframe web browser for OpenWebOS by Thirdy.">
+<title>Thirdy Browser</title>
+<style>
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f4f5f7;
+    color: #202124;
+}
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #ddd;
+}
+button {
+    border: none;
+    background: #f0f1f3;
+    border-radius: 9px;
+    padding: 10px 13px;
+    cursor: pointer;
+    font-size: 16px;
+}
+button:hover {
+    background: #e0e2e6;
+}
+#address {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid #dadce0;
+    border-radius: 12px;
+    font-size: 15px;
+    outline: none;
+}
+#address:focus {
+    border-color: #4285f4;
+}
+#status {
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #666;
+    background: white;
+}
+#browser {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: white;
+}
+#home {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+    padding: 24px;
+}
+#home h1 {
+    font-size: 34px;
+    margin-bottom: 8px;
+}
+#home p {
+    color: #666;
+    max-width: 450px;
+    line-height: 1.6;
+}
+.hidden {
+    display: none !important;
+}
+#home button {
+    margin-top: 12px;
+    background: #202124;
+    color: white;
+}
+footer {
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #777;
+    background: white;
+    border-top: 1px solid #eee;
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+    <button onclick="goBack()" title="Back">←</button>
+    <button onclick="goForward()" title="Forward">→</button>
+    <button onclick="reloadPage()" title="Reload">↻</button>
+<input
+    id="address"
+    type="text"
+    placeholder="Enter a URL or search the web..."
+    autocomplete="off"
+    spellcheck="false"
+>
+<button onclick="navigate()" title="Go">➜</button>
+<button onclick="goHome()" title="Home">⌂</button>
+</div>
+<div id="status">Ready</div>
+<div id="home">
+    <h1>🌐 Thirdy • Browser</h1>
+    <p>A lightweight iframe browser. Enter a website address to try opening it below.</p>
+    <button onclick="openExample()">Try Example.com</button>
+</div>
+<iframe
+    id="browser"
+    class="hidden"
+    title="Browser content"
+    referrerpolicy="strict-origin-when-cross-origin"
+></iframe>
+<footer>
+    Thirdy • Browser · HTML / CSS / JavaScript
+</footer>
+<script>
+const address = document.getElementById("address");
+const browser = document.getElementById("browser");
+const home = document.getElementById("home");
+const status = document.getElementById("status");
+let historyStack = [];
+let historyIndex = -1;
+function normalizeURL(input) {
+    input = input.trim();
+    if (!input) return null;
+    // Treat ordinary text as a web search.
+    if (/\s/.test(input)) {
+        return "https://www.google.com/search?q=" +
+            encodeURIComponent(input);
+    }
+    // If no protocol is supplied, assume HTTPS.
+    if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(input)) {
+        input = "https://" + input;
+    }
+    try {
+        const url = new URL(input);
+        if (!["http:", "https:"].includes(url.protocol)) {
+            return null;
+        }
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+function navigate(url = address.value, saveHistory = true) {
+    const target = normalizeURL(url);
+    if (!target) {
+        status.textContent = "Please enter a valid HTTP or HTTPS address.";
+        return;
+    }
+    address.value = target;
+    home.classList.add("hidden");
+    browser.classList.remove("hidden");
+    status.textContent = "Attempting to load: " + new URL(target).hostname;
+    if (saveHistory) {
+        historyStack = historyStack.slice(0, historyIndex + 1);
+        historyStack.push(target);
+        historyIndex = historyStack.length - 1;
+    }
+    browser.src = target;
+}
+function goBack() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        navigate(historyStack[historyIndex], false);
+    }
+}
+function goForward() {
+    if (historyIndex < historyStack.length - 1) {
+        historyIndex++;
+        navigate(historyStack[historyIndex], false);
+    }
+}
+function reloadPage() {
+    if (browser.src && browser.src !== "about:blank") {
+        browser.src = browser.src;
+    }
+}
+function goHome() {
+    browser.src = "about:blank";
+    browser.classList.add("hidden");
+    home.classList.remove("hidden");
+    address.value = "";
+    status.textContent = "Home";
+}
+function openExample() {
+    address.value = "https://example.com";
+    navigate();
+}
+address.addEventListener("keydown", event => {
+    if (event.key === "Enter") navigate();
+});
+browser.addEventListener("load", () => {
+    status.textContent =
+        "Frame loaded · Some websites may block iframe embedding.";
+});
+</script>
+</body>
+</html>
